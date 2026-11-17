@@ -91,11 +91,9 @@
   }
   function fit() {
     if (S.view === '3d' || inSet()) return;
-    const r = $('#canvas').getBoundingClientRect(), es = edges();
-    const e = S.sel?.type === 'edge' && es.find((x) => x.id === S.sel.id);
-    // a phone in portrait cannot show the whole canvas legibly: open on the selected fact instead
-    if (r.width < 620 && e) cv.fit(cv.boxOf(e.members.map((m) => m.node), 95));
-    else cv.fit(S.scene === 'poster' && !S.focus && S.view === 'hull' ? POSTER_BOX : null);
+    // the whole drawing always fits the screen; on a small screen the view buttons lie over its top, so keep that strip clear
+    const r = $('#canvas').getBoundingClientRect();
+    cv.fit(S.scene === 'poster' && !S.focus && S.view === 'hull' ? POSTER_BOX : null, r.width < 900 || r.height < 420 ? 46 : 0);
   }
   function renderBar(es, ns) {
     const pairs = es.reduce((s, e) => s + e.members.length * (e.members.length - 1) / 2, 0);

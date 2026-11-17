@@ -237,11 +237,12 @@
       }
       return isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
     }
-    function fit(box) {
+    function fit(box, top = 0) {       // top: screen pixels at the top kept clear (the view buttons lie over the drawing there)
       const r = svg.getBoundingClientRect(), b = box || contentBox(); if (!r.width || !r.height || !b) return;
       const s = Math.min(r.width / BASE.w, r.height / BASE.h), visW = r.width / s, visH = r.height / s;   // viewBox units on screen
-      view.k = Math.min(2.6, visW / b.w, visH / b.h);
-      view.tx = BASE.x + BASE.w / 2 - view.k * (b.x + b.w / 2); view.ty = BASE.y + BASE.h / 2 - view.k * (b.y + b.h / 2);
+      top = Math.min(top, r.height / 3) / s;
+      view.k = Math.min(2.6, visW / b.w, (visH - top) / b.h);
+      view.tx = BASE.x + BASE.w / 2 - view.k * (b.x + b.w / 2); view.ty = BASE.y + BASE.h / 2 + top / 2 - view.k * (b.y + b.h / 2);
       applyView();
     }
     function boxOf(nodeIds, pad = 110) {
