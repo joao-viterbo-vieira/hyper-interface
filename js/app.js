@@ -14,7 +14,7 @@
   const SCENES = [['all', 'Whole memory'], ['poster', 'Poster example'], ['cup', 'Where is the cup?'], ['r2', 'Robot R2']];
   const S = { at: 'now', mode: 'graph', view: 'hull', scene: 'all', focus: null, hops: 1, hidden: new Set(), showDeprecated: true, robotView: false,
               sel: { type: 'edge', id: 'e2' }, form: null, playing: null };
-  let cv = null, v3 = null;
+  let cv = null, v3 = null, v3key = null;
 
   const C = () => (S.at === 'now' ? store.head() : S.at);
   const live = () => S.at === 'now';
@@ -58,10 +58,16 @@
   };
   function renderCanvas() {
     const es = edges(), ns = nodes(es), is3d = S.view === '3d';
-    $('#canvas').hidden = is3d; $('#stage3d').hidden = !is3d; $('#zoom').hidden = is3d;
-    v3?.stop(); v3 = null;
-    if (is3d) v3 = view3d.render($('#stage3d'), { nodes: ns, edges: es }, hooks);
-    else cv.render({ nodes: ns, edges: es.map((e) => ({ ...e, caption: e.caption && { ...e.caption }, caption2: e.caption2 && { ...e.caption2 } })), sel: S.sel, mode: S.view, capKey: capKey() });
+    $('#canvas').toggleAttribute('hidden', is3d);   // an <svg> has no .hidden property
+    $('#stage3d').hidden = !is3d; $('#zoom').hidden = is3d;
+    // the 3D scene is rebuilt only when what it shows changes; a new selection just restyles it
+    const key = is3d && JSON.stringify([canvas.theme(), ns.map((n) => n.id), es.map((e) => [e.id, e.status, e.members])]);
+    if (v3 && key === v3key) v3.select(S.sel);
+    else {
+      v3?.stop(); v3 = null; v3key = null;
+      if (is3d) { v3 = view3d.render($('#stage3d'), { nodes: ns, edges: es }, { ...hooks, sel: S.sel }); v3key = key; }
+    }
+    if (!is3d) cv.render({ nodes: ns, edges: es.map((e) => ({ ...e, caption: e.caption && { ...e.caption }, caption2: e.caption2 && { ...e.caption2 } })), sel: S.sel, mode: S.view, capKey: capKey() });
     $('#empty').hidden = es.length > 0;
     const ro = $('#readonly'); ro.hidden = live();
     if (!live()) ro.innerHTML = `Memory as it was at <b>${tName(S.at)}</b> · ${esc(commit(S.at).t)} — read-only. <button data-act="goto" data-id="now">Back to now</button>`;
@@ -83,9 +89,9 @@
         <label>hops <select id="hops">${[1, 2, 3].map((h) => `<option ${h === S.hops ? 'selected' : ''}>${h}</option>`).join('')}</select></label>` : ''}
       <label title="Only validated knowledge: what the robot retrieves for planning"><input type="checkbox" id="robot-view" ${S.robotView ? 'checked' : ''}> robot view</label>
       ${S.robotView ? '' : `<label title="Draw the facts the operator has deprecated"><input type="checkbox" id="show-dep" ${S.showDeprecated ? 'checked' : ''}> deprecated</label>`}
-      ${S.view === '3d' ? '<button data-act="rotate" class="link">rotate ⟳</button>' : ''}`;
+      ${S.view === '3d' ? '<button data-act="rotate" class="link" title="Start or stop the slow turn">rotate / pause</button>' : ''}`;
     $('#note').hidden = S.view !== 'pairwise';
-    $('#note').innerHTML = `<b>${pairs} pairwise links</b> stand in for ${es.length} fact${es.length === 1 ? '' : 's'}. The links survive; which fact each belongs to, its roles and its status do not. Hover a link to see its fact.`;
+    $('#note').innerHTML = `<b>${pairs} pairwise links</b> stand in for ${es.length} fact${es.length === 1 ? '' : 's'}. Arrows, words and colours survive; which fact a link belongs to and its roles do not. Hover a link to see its fact.`;
     $('#count').textContent = `${es.length} fact${es.length === 1 ? '' : 's'} · ${ns.length} entities`;
   }
   function renderLegend(es) {

@@ -66,6 +66,11 @@ sub { font-size: .72em; vertical-align: baseline; position: relative; top: .28em
 #stage3d, .g3d, .labels3d { position: absolute; inset: 0; }
 .labels3d { pointer-events: none; overflow: hidden; }
 .lbl3d { position: absolute; left: 0; top: 0; white-space: nowrap; font-weight: 600; color: var(--text); will-change: transform; text-shadow: 0 0 4px var(--stage), 0 0 8px var(--stage), 0 1px 2px var(--stage); }
+.lbl3d.hub { font-family: var(--mono); font-weight: 700; }
+.lbl3d.hub sub { font-size: .7em; }
+.lbl3d.sel { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.hint3d { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); margin: 0; font-size: 12px; color: var(--muted); pointer-events: none; white-space: nowrap; }
+@media (max-width: 700px) { .hint3d { display: none; } }
 .tip3d { background: var(--card); border: 1px solid var(--line); color: var(--text); padding: 6px 9px; border-radius: 8px; font: 12.5px/1.4 var(--sans); max-width: 300px; }
 .nogl, #empty { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; text-align: center; padding: 40px; color: var(--muted); pointer-events: none; }
 

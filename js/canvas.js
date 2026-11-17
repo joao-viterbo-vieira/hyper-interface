@@ -116,16 +116,27 @@
             <text x="${f1(h.x)}" y="${f1(h.y - 19)}" class="hubid" fill="${st.stroke}" stroke="${T.paper}">${ids(e.id)}</text></g>`);
         }
       } else {                                    // pairwise
+        // every pair of members gets a link; pairs the fact reads in order get an arrow with its word
         for (const e of model.edges) {
-          const col = styleOf(e).stroke, ms = e.members.map((m) => N.get(m.node)).filter(Boolean);
+          const col = styleOf(e).stroke, w = selEdge?.id === e.id ? 3.4 : 2.2;
+          const ms = e.members.map((m) => N.get(m.node)).filter(Boolean), flowed = new Set();
           o.push(`<g data-edge="${e.id}" class="flow"${dimEdge(e)}>`);
+          for (const f of e.flow) {
+            const a = N.get(f.from), b = N.get(f.to); if (!a || !b) continue;
+            flowed.add(a.id + '|' + b.id); flowed.add(b.id + '|' + a.id);
+            const g = arrow(o, a, b, col, haloed.has(a.id) ? 34 : 29.5, haloed.has(b.id) ? 35.5 : 31, w);
+            const side = f.side ?? -1, dist = f.dist ?? 10, t = f.t ?? 0.5;
+            const mx = g.x1 + (g.x2 - g.x1) * t - g.uy * dist * side, my = g.y1 + (g.y2 - g.y1) * t + g.ux * dist * side;
+            if (f.word) o.push(`<text x="${f1(mx)}" y="${f1(my + 3.6)}" class="word" fill="${col}" stroke="${T.paper}">${esc(f.word)}</text>`);
+          }
           for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++)
-            o.push(`<line x1="${ms[i].x}" y1="${ms[i].y}" x2="${ms[j].x}" y2="${ms[j].y}" stroke="${hover === e.id || selEdge?.id === e.id ? col : T.grey}" stroke-width="${selEdge?.id === e.id ? 3.4 : 2.2}"/>`);
+            if (!flowed.has(ms[i].id + '|' + ms[j].id))
+              o.push(`<line x1="${ms[i].x}" y1="${ms[i].y}" x2="${ms[j].x}" y2="${ms[j].y}" stroke="${col}" stroke-width="${w}" stroke-opacity=".7"/>`);
           o.push('</g>');
         }
       }
       // captions: the sentence the hyperedge asserts, then its context and status
-      if (mode !== 'pairwise') for (const e of model.edges) {
+      for (const e of model.edges) {
         const hp = hulls.get(e.id), col = styleOf(e).stroke;
         let cap = capOf(e);
         if (!cap) {
@@ -218,7 +229,7 @@
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       const add = (ax, ay, bx, by) => { x0 = Math.min(x0, ax); y0 = Math.min(y0, ay); x1 = Math.max(x1, bx); y1 = Math.max(y1, by); };
       for (const n of model.nodes) add(n.x - 82, n.y - 74, n.x + 82, n.y + 96);
-      if (model.mode !== 'pairwise') for (const e of model.edges) {
+      for (const e of model.edges) {
         const c = capOf(e); if (!c) continue;
         const w = 7.3 * (e.sentence.length + e.id.length + 1) + 8;
         const left = c.anchor === 'end' ? c.x - w : c.anchor === 'middle' ? c.x - w / 2 : c.x;
