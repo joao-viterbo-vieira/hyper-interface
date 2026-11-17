@@ -269,7 +269,7 @@
   let wanted = null;                                 // #set=… in the URL: opened once the page is up
   function readHash() {
     const q = new URLSearchParams(location.hash.slice(1));
-    if (q.get('set')) { wanted = q.get('set'); if (q.get('view') === '2d') gallery.state.dim = 2; }
+    if (q.get('set')) { wanted = q.get('set'); if (q.get('view') === '2d') gallery.state.dim = 2; gallery.want(q.get('sel'), q.get('part')); }
     if (VIEWS.some((v) => v[0] === q.get('view'))) S.view = q.get('view');
     if (q.has('scene')) applyScene(q.get('scene'));
     if (q.get('focus') && store.entity(q.get('focus'))) S.focus = q.get('focus');
@@ -281,6 +281,7 @@
     const q = new URLSearchParams();
     if (inSet()) {
       q.set('set', gallery.state.id); if (gallery.state.dim === 2) q.set('view', '2d'); if (S.mode !== 'graph') q.set('mode', S.mode);
+      const h = gallery.hash(); if (h.sel) q.set('sel', h.sel); if (h.focus) q.set('part', h.focus);
       return history.replaceState(null, '', '#' + q);
     }
     if (S.view !== 'hull') q.set('view', S.view);
@@ -382,7 +383,7 @@
     if (!t || t.disabled) { if (!ev.target.closest('#search-wrap')) $('#results').hidden = true; return; }
     if (t.tagName === 'A') ev.preventDefault();
     const act = t.dataset.act;
-    if (inSet() && (act === 'set-edge' || act === 'set-node' || act === 'set-focus')) S.mode = 'graph';
+    if (inSet() && /^set-(edge|node|paper|focus|focus-paper|path-from|back|fwd|home)$/.test(act)) S.mode = 'graph';
     (ACT[act] || gallery.act[act])?.(t.dataset.id, ev);
     if (t.closest('#results')) { $('#results').hidden = true; $('#search').value = ''; }
   });
@@ -417,7 +418,10 @@
     gallery.onChange(refresh);
     $('#search').addEventListener('input', (ev) => search(ev.target.value));
     $('#search').addEventListener('focus', (ev) => search(ev.target.value));
-    window.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') $('#results').hidden = true; });
+    window.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') $('#results').hidden = true;
+      else if (ev.key === 'Enter' && ev.target.matches?.('div[role=button][data-act]')) ev.target.click();      // statement cards hold links, so they are not buttons
+    });
     let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (inSet()) gallery.resize($('#stage3d')); else if (S.view === '3d') renderCanvas(); else fit(); }, 150); });
     refit();
     if (wanted) setMemory(wanted);

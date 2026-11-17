@@ -2,11 +2,16 @@
 // They are far too large for the poster's region drawing, so they are drawn only as a 2D or a 3D node-link
 // picture: every hyperedge is a small coloured hub linked to its members. Positions are precomputed
 // (tools/layout_demo_graphs.mjs), so a graph of ten thousand points appears at once and always looks the same.
+// Exploring follows the Ontotipo interface: every node, hyperedge and paper has a note whose names are links, with
+// back and forward; a double click draws only a node's neighbourhood; and a shortest path can be asked between two nodes.
 // Each graph is a data/<id>.js file, loaded with a script tag the first time it is opened (works from file://).
 (function () {
   const { theme, esc } = window.HI.canvas;
   const LIST = [['zotero', 'Zotero KG · 271 papers'], ['ontotipo', 'Ontotipo · 16 papers'], ['s2d', 'HarnessKG · S2D']];
-  const G = { id: null, set: null, dim: 3, hidden: new Set(), sel: null, focus: null, hops: 1, error: null };
+  // sel: what the panel shows, { type: 'node' | 'edge' | 'paper', id } or { type: 'path', from, to, steps }
+  // focus: what the canvas is cut down to, { type: 'node' | 'paper', id } or { type: 'path', edges }
+  const G = { id: null, set: null, dim: 3, hidden: new Set(), sel: null, focus: null, hops: 1, error: null, pathFrom: null, all: false, wanted: null };
+  let hist = [null], at = 0;                               // the notes visited, for back and forward
   const loading = {};
   let view = null, onChange = () => {};
   const dark = () => document.documentElement.dataset.theme !== 'light';
@@ -20,6 +25,8 @@
     s.deg = new Array(s.nodes.length).fill(0); s.of = s.nodes.map(() => []);
     s.edges.forEach((e, j) => { for (const [i] of e.m) { s.deg[i]++; s.of[i].push(j); } });
     s.top = s.nodes.map((_, i) => i).sort((a, b) => s.deg[b] - s.deg[a]);
+    s.byPaper = s.papers.map(() => []); s.edges.forEach((e, j) => { if (e.pp != null) s.byPaper[e.pp].push(j); });
+    s.np = s.of.map((es) => new Set(es.map((j) => s.edges[j].pp)).size);        // how many papers speak of each node
     return s;
   }
   function load(id) {
@@ -33,19 +40,21 @@
   }
   async function open(id) {
     if (!LIST.some((l) => l[0] === id)) return false;
-    if (G.id !== id) Object.assign(G, { id, set: null, hidden: new Set(), sel: null, focus: null, hops: 1, error: null });
+    if (G.id !== id) { Object.assign(G, { id, set: null, hidden: new Set(), sel: null, focus: null, hops: 1, error: null, pathFrom: null, all: false }); hist = [null]; at = 0; }
     onChange();                                             // paints "Loading…"
-    try { const s = await load(id); if (G.id === id) G.set = s; } catch (err) { if (G.id === id) G.error = err.message; }
+    try { const s = await load(id); if (G.id === id) { G.set = s; restore(); } } catch (err) { if (G.id === id) G.error = err.message; }
     if (G.id === id) onChange();
     return true;
   }
-  function close() { view?.stop(); view = null; Object.assign(G, { id: null, set: null, sel: null, focus: null, error: null }); }
+  function close() { view?.stop(); view = null; Object.assign(G, { id: null, set: null, sel: null, focus: null, error: null, pathFrom: null, wanted: null }); }
 
-  // the hyperedges on screen: all of them, or those within `hops` of the focused node; minus the hidden types
+  // the hyperedges on screen: all of them, those within `hops` of the focused node, one paper's, or a path; minus the hidden types
   function visibleEdges() {
-    const s = G.set, ok = (j) => !G.hidden.has(s.edges[j].g);
-    if (G.focus == null) return s.edges.map((_, j) => j).filter(ok);
-    const keep = new Set(); let frontier = [G.focus];
+    const s = G.set, ok = (j) => !G.hidden.has(s.edges[j].g), f = G.focus;
+    if (!f) return s.edges.map((_, j) => j).filter(ok);
+    if (f.type === 'path') return [...f.edges].sort((a, b) => a - b);
+    if (f.type === 'paper') return s.byPaper[f.id].filter(ok);
+    const keep = new Set(); let frontier = [f.id];
     for (let h = 0; h < G.hops; h++) {
       const next = new Set();
       for (const i of frontier) for (const j of s.of[i]) if (!keep.has(j) && ok(j)) { keep.add(j); for (const [k] of s.edges[j].m) next.add(k); }
@@ -55,7 +64,8 @@
   }
 
   // ───────────────────────────── drawing ─────────────────────────────
-  const key = () => [G.id, G.dim, [...G.hidden].sort().join(','), G.focus, G.hops, dark()].join('|');
+  const focusKey = () => (G.focus ? G.focus.type + (G.focus.id ?? G.focus.edges.join('.')) : '');
+  const key = () => [G.id, G.dim, [...G.hidden].sort().join(','), focusKey(), G.hops, dark()].join('|');
   function draw(el) {
     if (!G.set) {
       view?.stop(); view = null;
@@ -89,9 +99,9 @@
       el.innerHTML = '<p class="nogl">These graphs are drawn with WebGL, which this browser has switched off.</p>';
       return { ...base, stop() {}, highlight() {}, flyTo() {}, toggleRotate() {}, reset() {}, resize() {} };
     }
-    const big = nodes.length > 3000, live = G.focus != null && nodes.length < 1500;   // a neighbourhood is small: lay it out afresh
+    const big = nodes.length > 3000, live = !!G.focus && nodes.length < 1500;   // a neighbourhood is small: lay it out afresh
     const r = (n) => (n.hub ? (big ? 1.5 : 2.2) : Math.min(15, 2.4 + 1.25 * Math.sqrt(n.deg)));
-    let H = null, hk = null;
+    let H = null, hk = null, lastClick = null;                  // the node the last click landed on
     const nodeColor = (n) => { const c = n.hub ? colorOf(s.edges[n.j].g) : T.ink; return !H || H.nodes.has(n.id) ? c : rgba(c, 0.1); };
     const linkColor = (l) => { const c = colorOf(s.edges[l.j].g); return !H || H.edges.has(l.j) ? c : rgba(c, 0.04); };
     const linkWidth = (l) => (H && H.edges.has(l.j) ? (big ? 2.6 : 1) : 0);
@@ -100,10 +110,17 @@
     fg.width(el.clientWidth).height(el.clientHeight).backgroundColor('rgba(0,0,0,0)').showNavInfo(false).numDimensions(d)
       .nodeId('id').nodeRelSize(1).nodeVal((n) => Math.pow(r(n), 3)).nodeOpacity(0.95).nodeResolution(big ? 6 : 14)
       .nodeColor(nodeColor).nodeLabel(tip).linkColor(linkColor).linkOpacity(big ? 0.32 : 0.6).linkWidth(linkWidth)
-      .onNodeClick((n) => select(n.hub ? { type: 'edge', id: n.j } : { type: 'node', id: n.i }, false))
-      .onBackgroundClick(() => select(null, false))
+      .onNodeClick((n) => {                             // click: its note
+        lastClick = n.hub ? null : n.i;
+        pick(n.hub ? { type: 'edge', id: n.j } : { type: 'node', id: n.i }, false);
+      })
+      .onBackgroundClick(() => { lastClick = null; if (G.sel?.type === 'node' || G.sel?.type === 'edge') pick(null, false); })
       .enableNodeDrag(false).warmupTicks(live ? 140 : 0).cooldownTicks(0).d3VelocityDecay(0.4).graphData({ nodes, links });
-    if (live) { fg.d3Force('charge').strength((n) => (n.hub ? -50 : -150)); fg.d3Force('link').distance(34).strength(0.5); }
+    if (live) {
+      fg.d3Force('charge').strength((n) => (n.hub ? -50 : -150)); fg.d3Force('link').distance(34).strength(0.5);
+      // a pull to the middle, so that the pieces of a part that is not connected do not drift out of sight
+      fg.d3Force('gravity', (alpha) => { for (const n of nodes) { n.vx -= n.x * 0.07 * alpha; n.vy -= n.y * 0.07 * alpha; if (d === 3) n.vz -= n.z * 0.07 * alpha; } });
+    }
     const ctl = fg.controls();
     if (d === 2 && ctl) { ctl.noRotate = true; if (ctl.mouseButtons) { ctl.mouseButtons.LEFT = 2; ctl.mouseButtons.RIGHT = 0; } }   // flat: drag pans
 
@@ -124,6 +141,7 @@
       fg.cameraPosition({ x: centre.x + dist * Math.cos(elev) * Math.sin(a), y: centre.y + dist * Math.sin(elev), z: centre.z + dist * Math.cos(elev) * Math.cos(a) }, centre, ms);
     }
     function flyTo(sel) {                       // frame a node, or a hyperedge with all its members
+      if (sel.type !== 'edge' && sel.type !== 'node') return;
       if (!ready) { queued = sel; return; }
       const n = sel.type === 'edge' ? hubs.get(sel.id) : byNode.get(sel.id); if (!n) return;
       rotating = false;
@@ -163,6 +181,10 @@
         h = { nodes: new Set(['n' + sel.id]), edges: new Set(es) };
         for (const j of es) { h.nodes.add('h' + j); for (const [i] of s.edges[j].m) h.nodes.add('n' + i); }
       }
+      else if (sel?.type === 'paper' && G.focus?.type !== 'paper') {
+        const es = s.byPaper[sel.id].filter((j) => shown.has(j));
+        if (es.length) { h = { nodes: new Set(), edges: new Set(es) }; for (const j of es) { h.nodes.add('h' + j); for (const [i] of s.edges[j].m) h.nodes.add('n' + i); } }
+      }
       const k = h ? sel.type + sel.id : '';
       if (k === hk) return;
       const first = hk === null; hk = k; H = h;
@@ -171,6 +193,9 @@
     }
     fg.onEngineStop(() => { if (ready) return; measure(); ready = true; home(0); if (queued) { flyTo(queued); queued = null; } });
     const pause = () => { rotating = false; };
+    host.addEventListener('dblclick', () => {             // double click on a node: draw only its neighbourhood
+      if (lastClick != null && G.pathFrom == null) ACT['set-focus'](lastClick);
+    });
     host.addEventListener('pointerdown', pause); host.addEventListener('wheel', pause, { passive: true });
     (function loop(now) {
       if (!alive) return;
@@ -183,23 +208,66 @@
       reset() { rotating = false; if (ready) home(600); } };
   }
 
-  // ───────────────────────────── selection and filters ─────────────────────────────
-  function select(sel, fly) {
-    G.sel = sel;
-    if (sel && G.set) {                                     // something picked from a list may be filtered out: bring it back
-      const vis = new Set(visibleEdges()), s = G.set;
-      const on = sel.type === 'edge' ? vis.has(sel.id) : s.of[sel.id].some((j) => vis.has(j));
-      if (!on) { G.focus = null; G.hidden.clear(); }
+  // ───────────────────────────── selection, history, paths and filters ─────────────────────────────
+  const same = (a, b) => a === b || (!!a && !!b && a.type === b.type && a.id === b.id && a.from === b.from && a.to === b.to);
+  function show(sel, fly, push) {
+    G.sel = sel; G.all = false;
+    if (push !== false && !same(hist[at], sel)) { hist = hist.slice(0, at + 1); hist.push(sel); at = hist.length - 1; }
+    if (sel && G.set) {
+      const s = G.set;
+      if (sel.type === 'path') G.focus = sel.steps ? { type: 'path', edges: sel.steps.map((p) => p.edge) } : G.focus?.type === 'path' ? null : G.focus;
+      else if (sel.type !== 'paper') {                      // something picked from a list may be filtered out: bring it back
+        const vis = new Set(visibleEdges());
+        if (!(sel.type === 'edge' ? vis.has(sel.id) : s.of[sel.id].some((j) => vis.has(j)))) { G.focus = null; G.hidden.clear(); }
+      }
     }
     onChange();
+    document.getElementById('panel')?.scrollTo(0, 0);
     if (fly && sel) view?.flyTo(sel);
+  }
+  // a node picked while a path is being asked for is the path's other end
+  function pick(sel, fly) {
+    if (sel?.type === 'node' && G.pathFrom != null && sel.id !== G.pathFrom) {
+      const from = G.pathFrom; G.pathFrom = null;
+      return show({ type: 'path', from, to: sel.id, steps: route(from, sel.id) }, false);
+    }
+    show(sel, fly);
+  }
+  // shortest hyperpath: the fewest hyperedges that lead from one node to the other
+  function route(a, b) {
+    const s = G.set, prev = new Map([[a, null]]), used = new Set(); let q = [a];
+    while (q.length && !prev.has(b)) {
+      const next = [];
+      for (const i of q) for (const j of s.of[i]) { if (used.has(j)) continue; used.add(j); for (const [k] of s.edges[j].m) if (!prev.has(k)) { prev.set(k, [i, j]); next.push(k); } }
+      q = next;
+    }
+    if (!prev.has(b)) return null;
+    const steps = []; for (let k = b; prev.get(k); k = prev.get(k)[0]) steps.unshift({ from: prev.get(k)[0], edge: prev.get(k)[1], to: k });
+    return steps;
+  }
+  const code = (x) => (x && x.id != null ? x.type[0] + x.id : '');
+  function decode(v, types) {
+    const s = G.set, t = { n: 'node', e: 'edge', p: 'paper' }[v?.[0]], id = +v?.slice(1), max = t && { node: s.nodes, edge: s.edges, paper: s.papers }[t].length;
+    return t && types.includes(t) && Number.isInteger(id) && id >= 0 && id < max ? { type: t, id } : null;
+  }
+  function restore() {                                      // what the URL asked for, once the graph is loaded
+    if (!G.wanted) return;
+    const sel = decode(G.wanted.sel, ['node', 'edge', 'paper']); G.focus = decode(G.wanted.focus, ['node', 'paper']); G.wanted = null;
+    if (sel) { G.sel = sel; hist = [null, sel]; at = 1; setTimeout(() => view?.flyTo(sel), 0); }
   }
   const ACT = {
     'set-view': (id) => { G.dim = id === '2d' ? 2 : 3; onChange(); },
-    'set-edge': (id) => select({ type: 'edge', id: +id }, true),
-    'set-node': (id) => select({ type: 'node', id: +id }, true),
-    'set-focus': (id) => { G.focus = +id; G.sel = { type: 'node', id: +id }; onChange(); },
+    'set-edge': (id) => pick({ type: 'edge', id: +id }, true),
+    'set-node': (id) => pick({ type: 'node', id: +id }, true),
+    'set-paper': (id) => { G.pathFrom = null; show({ type: 'paper', id: +id }, false); },
+    'set-focus': (id) => { G.focus = { type: 'node', id: +id }; G.pathFrom = null; show({ type: 'node', id: +id }, false); },
+    'set-focus-paper': (id) => { G.focus = { type: 'paper', id: +id }; show({ type: 'paper', id: +id }, false); },
     'set-unfocus': () => { G.focus = null; onChange(); },
+    'set-path-from': (id) => { G.pathFrom = G.pathFrom === +id ? null : +id; onChange(); },
+    'set-back': () => { if (at > 0) show(hist[--at], true, false); },
+    'set-fwd': () => { if (at < hist.length - 1) show(hist[++at], true, false); },
+    'set-home': () => { G.pathFrom = null; show(null, false); },
+    'set-more': () => { G.all = !G.all; onChange(); },
     'set-group': (id, ev) => {
       const all = G.set.groups.map((_, i) => i); id = +id;
       if (ev.altKey) G.hidden = new Set(G.hidden.size === all.length - 1 && !G.hidden.has(id) ? [] : all.filter((g) => g !== id));
@@ -216,8 +284,14 @@
     ${LIST.map(([id, name]) => `<option value="${id}" ${id === G.id ? 'selected' : ''}>${esc(name)}</option>`).join('')}</optgroup></select></label>`;
   const viewsHTML = () => [['2d', '2D', 'The graph laid flat'], ['3d', '3D', 'The graph in space']]
     .map(([id, name, title]) => `<button data-act="set-view" data-id="${id}" title="${title}" class="${(id === '2d') === (G.dim === 2) ? 'active' : ''}">${name}</button>`).join('');
-  const optionsHTML = () => memorySelect() + (G.set && G.focus != null ? `<span class="focus">${esc(G.set.nodes[G.focus].l)}<button data-act="set-unfocus" title="Clear the focus" aria-label="Clear the focus">✕</button></span>
-      <label>hops <select id="set-hops">${[1, 2].map((h) => `<option ${h === G.hops ? 'selected' : ''}>${h}</option>`).join('')}</select></label>` : '') +
+  function focusName() {
+    const s = G.set, f = G.focus;
+    if (f.type === 'paper') return short(s.papers[f.id]);
+    if (f.type === 'node') return s.nodes[f.id].l;
+    return G.sel?.type === 'path' ? short(s.nodes[G.sel.from].l) + ' → ' + short(s.nodes[G.sel.to].l) : 'path';
+  }
+  const optionsHTML = () => memorySelect() + (G.set && G.focus ? `<span class="focus" title="Only this part of the graph is drawn">${esc(focusName())}<button data-act="set-unfocus" title="Show the whole graph" aria-label="Show the whole graph">✕</button></span>
+      ${G.focus.type === 'node' ? `<label>hops <select id="set-hops">${[1, 2].map((h) => `<option ${h === G.hops ? 'selected' : ''}>${h}</option>`).join('')}</select></label>` : ''}` : '') +
     (G.dim === 3 ? '<button data-act="set-rotate" class="link" title="Start or stop the slow turn">rotate / pause</button>' : '') + '<button data-act="set-reset" class="link">fit ⤢</button>';
   function legendHTML() {
     if (!G.set) return '';
@@ -227,54 +301,113 @@
         <span><svg width="26" height="10"><circle cx="13" cy="5" r="2.6" fill="${colorOf(0)}"/></svg>one ${esc(G.set.unit)}, linked to its members</span></div>`;
   }
   const rows = (list) => `<dl class="kv">${list.filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
-  const chip = (i) => `<button class="chip" data-act="set-node" data-id="${i}">${esc(G.set.nodes[i].l)}</button>`;
+  const chip = (i, n) => `<button class="chip" data-act="set-node" data-id="${i}">${esc(G.set.nodes[i].l)}${n ? ` <em>${n}</em>` : ''}</button>`;
+  const paperChip = (i, n) => `<button class="chip paper" data-act="set-paper" data-id="${i}" title="${esc(G.set.papers[i])}">${esc(short(G.set.papers[i]))}${n ? ` <em>${n}</em>` : ''}</button>`;
+  // the statement, with the members it names turned into links (longest name first, no overlaps)
+  function linked(e) {
+    const s = G.set, text = e.t, low = text.toLowerCase(), taken = [];
+    const names = e.m.map(([i]) => [s.nodes[i].l.replace(/…$/, '').toLowerCase(), i]).filter(([n]) => n.length > 2).sort((a, b) => b[0].length - a[0].length);
+    for (const [name, i] of names) {
+      for (let p = low.indexOf(name); p >= 0; p = low.indexOf(name, p + name.length)) {
+        const q = p + name.length;
+        if (!taken.some(([a, b]) => p < b && q > a)) { taken.push([p, q, i]); break; }
+      }
+    }
+    taken.sort((a, b) => a[0] - b[0]);
+    let out = '', k = 0;
+    for (const [p, q, i] of taken) { out += esc(text.slice(k, p)) + `<a href="#" data-act="set-node" data-id="${i}">${esc(text.slice(p, q))}</a>`; k = q; }
+    return out + esc(text.slice(k));
+  }
   function card(j) {
     const s = G.set, e = s.edges[j];
-    return `<button class="fact${G.sel?.type === 'edge' && G.sel.id === j ? ' current' : ''}" data-act="set-edge" data-id="${j}" style="--c:${colorOf(e.g)}"><span class="fid">${j + 1}</span><span><b>${esc(e.t)}</b>
-      <span class="fmeta">${esc(s.groups[e.g].label)}${e.pp != null ? ' · ' + esc(s.papers[e.pp]) : ''}</span></span></button>`;
+    return `<div class="fact${G.sel?.type === 'edge' && G.sel.id === j ? ' current' : ''}" role="button" tabindex="0" data-act="set-edge" data-id="${j}" style="--c:${colorOf(e.g)}"><span class="fid">${j + 1}</span><span><b>${linked(e)}</b>
+      <span class="fmeta">${esc(s.groups[e.g].label)}${e.pp != null ? ` · <a href="#" data-act="set-paper" data-id="${e.pp}">${esc(s.papers[e.pp])}</a>` : ''}</span></span></div>`;
   }
+  // statements grouped by type, the largest group first; the first `max` unless everything was asked for
+  function statements(es, max = 40) {
+    const s = G.set, by = new Map(); for (const j of es) { const g = s.edges[j].g; by.set(g, [...(by.get(g) || []), j]); }
+    let left = G.all ? Infinity : max, out = '';
+    for (const [g, js] of [...by].sort((a, b) => b[1].length - a[1].length)) {
+      if (left <= 0) break;
+      out += `<h3 class="grp" style="color:${colorOf(g)}">■ ${esc(s.groups[g].label)} <em>${js.length}</em></h3>` + js.slice(0, left).map(card).join('');
+      left -= js.length;
+    }
+    return out + more(es.length, max);
+  }
+  const more = (n, max) => (n > max ? `<p class="muted note">${G.all ? `All ${n.toLocaleString('en')} shown.` : `The first ${max} of ${n.toLocaleString('en')}.`} <button class="textlink" data-act="set-more">${G.all ? 'Show fewer' : 'Show all'}</button></p>` : '');
+  const tally = (ids) => { const c = new Map(); for (const i of ids) c.set(i, (c.get(i) || 0) + 1); return [...c].sort((a, b) => b[1] - a[1]); };
+  const navHTML = () => (hist.length > 1 || G.sel ? `<div class="navrow"><button data-act="set-back" title="Back" aria-label="Back" ${at > 0 ? '' : 'disabled'}>←</button><button data-act="set-fwd" title="Forward" aria-label="Forward" ${at < hist.length - 1 ? '' : 'disabled'}>→</button>
+    <button data-act="set-home" ${G.sel ? '' : 'disabled'}>Overview</button></div>` : '') +
+    (G.pathFrom != null ? `<p class="armed">Path from <b>${esc(G.set.nodes[G.pathFrom].l)}</b>: pick where it should end. Click a node in the graph, a name in this panel, or search. <button class="textlink" data-act="set-path-from" data-id="${G.pathFrom}">Cancel</button></p>` : '');
+  const focusButton = (type, id) => (G.focus?.type === type && G.focus.id === id ? '<button data-act="set-unfocus">Show the whole graph</button>'
+    : `<button class="primary" data-act="${type === 'node' ? 'set-focus' : 'set-focus-paper'}" data-id="${id}">View in the hypergraph</button>`);
   function panelHTML() {
     const s = G.set;
     if (!s) return `<div class="eyebrow">Demonstration · read-only</div><h1>${esc((LIST.find((l) => l[0] === G.id) || [])[1] || '')}</h1><p class="muted">${G.error ? esc(G.error) : 'Loading…'}</p>`;
     if (G.sel?.type === 'edge') {
       const e = s.edges[G.sel.id], col = colorOf(e.g), p = e.p || {};
-      return `<div class="eyebrow">Selected hyperedge · ${esc(s.unit)} ${G.sel.id + 1}</div><h1 style="color:${col}">${esc(e.t)}</h1>
+      return `${navHTML()}<div class="eyebrow">Hyperedge · ${esc(s.unit)} ${G.sel.id + 1}</div><h1 style="color:${col}">${linked(e)}</h1>
         <div class="badges"><span class="badge" style="color:${col}">${esc(s.groups[e.g].label)}</span><span class="badge">${plural(e.m.length, 'member')}</span><span class="badge">read-only</span></div>
         <h2>Roles</h2>${rows(e.m.map(([i, role]) => [esc(role), chip(i)]))}
-        <h2>Provenance</h2>${rows([e.pp != null ? ['source', esc(s.papers[e.pp])] : null,
+        <h2>Provenance</h2>${rows([e.pp != null ? ['source', `<a href="#" data-act="set-paper" data-id="${e.pp}">${esc(s.papers[e.pp])}</a>`] : null,
           ...Object.entries(p).filter(([k]) => k !== 'quote' && k !== 'confidence').map(([k, v]) => [esc(k), esc(v)]),
           p.confidence != null ? ['confidence', `<span class="conf"><i style="width:${Math.round(p.confidence * 100)}%"></i></span>${(+p.confidence).toFixed(2)}`] : null,
           p.quote ? ['quote', '“' + esc(p.quote) + '”'] : null])}
         <p class="muted note">From ${esc(s.source)}. Shown for demonstration: it cannot be edited or reviewed here.</p>`;
     }
     if (G.sel?.type === 'node') {
-      const i = G.sel.id, n = s.nodes[i], es = s.of[i], max = 60;
-      return `<div class="eyebrow">Node</div><h1>${esc(n.l)}</h1>
-        <div class="badges"><span class="badge">${esc(s.kinds[n.k])}</span><span class="badge">in ${plural(es.length, s.unit)}</span></div>
+      const i = G.sel.id, n = s.nodes[i], es = s.of[i];
+      const papers = s.papers.length ? tally(es.map((j) => s.edges[j].pp)) : [];
+      const related = tally(es.flatMap((j) => s.edges[j].m.map(([k]) => k)).filter((k) => k !== i)).slice(0, 16);
+      return `${navHTML()}<div class="eyebrow">Node</div><h1>${esc(n.l)}</h1>
+        <div class="badges"><span class="badge">${esc(s.kinds[n.k])}</span><span class="badge">in ${plural(es.length, s.unit)}</span>${papers.length ? `<span class="badge">${plural(papers.length, 'paper')}</span>` : ''}</div>
         ${n.d ? `<p>${esc(n.d)}</p>` : ''}
-        <div class="review">${G.focus === i ? '<button data-act="set-unfocus">Show the whole graph</button>' : `<button data-act="set-focus" data-id="${i}">Show only its neighbourhood</button>`}</div>
-        <h2>${plural(es.length, s.unit)} about it</h2>${es.slice(0, max).map(card).join('')}
-        ${es.length > max ? `<p class="muted note">The first ${max} of ${es.length.toLocaleString('en')}.</p>` : ''}`;
+        <div class="review">${focusButton('node', i)}<button data-act="set-path-from" data-id="${i}">${G.pathFrom === i ? 'Cancel the path' : 'Path from here'}</button></div>
+        ${papers.length ? `<h2>Backlinks · the papers that speak of it</h2><div class="chips">${papers.slice(0, G.all ? Infinity : 12).map(([p, c]) => paperChip(p, c)).join('')}</div>${more(papers.length, 12)}` : ''}
+        <h2>${plural(es.length, s.unit)} about it</h2>${statements(es)}
+        ${related.length ? `<h2>Related · named in the same ${esc(s.unit)}s</h2><div class="chips">${related.map(([k, c]) => chip(k, c)).join('')}</div>` : ''}`;
     }
-    const perPaper = s.papers.map(() => 0); for (const e of s.edges) if (e.pp != null) perPaper[e.pp]++;
+    if (G.sel?.type === 'paper') {
+      const p = G.sel.id, es = s.byPaper[p], top = tally(es.flatMap((j) => s.edges[j].m.map(([k]) => k)));
+      return `${navHTML()}<div class="eyebrow">Paper · ${p + 1} of ${s.papers.length}</div><h1>${esc(s.papers[p])}</h1>
+        <div class="badges"><span class="badge">${plural(es.length, s.unit)}</span><span class="badge">${plural(top.length, 'node')}</span></div>
+        <div class="review">${focusButton('paper', p)}</div>
+        <h2>Main concepts</h2><div class="chips">${top.slice(0, 18).map(([k, c]) => chip(k, c)).join('')}</div>
+        <h2>${plural(es.length, s.unit)}</h2>${statements(es)}`;
+    }
+    if (G.sel?.type === 'path') {
+      const { from, to, steps } = G.sel;
+      return `${navHTML()}<div class="eyebrow">Shortest path</div><h1>${esc(s.nodes[from].l)} → ${esc(s.nodes[to].l)}</h1>
+        ${steps ? `<div class="badges"><span class="badge">${plural(steps.length, 'hyperedge')}</span></div>
+          <p class="muted note">The fewest ${esc(s.unit)}s that lead from one to the other. Only these are drawn.</p>
+          <div class="pathsteps">${chip(from)}${steps.map((st) => card(st.edge) + chip(st.to)).join('')}</div>
+          <div class="review"><button data-act="set-unfocus">Show the whole graph</button><button data-act="set-path-from" data-id="${from}">Another path from ${esc(short(s.nodes[from].l))}</button></div>`
+        : `<p>No chain of ${esc(s.unit)}s connects them.</p><div class="chips">${chip(from)}${chip(to)}</div>`}`;
+    }
+    const perPaper = s.byPaper.map((es) => es.length);
     const papers = s.papers.map((_, i) => i).sort((a, b) => perPaper[b] - perPaper[a]);
-    return `<div class="eyebrow">Demonstration · read-only</div><h1>${esc(s.title)}</h1><p>${esc(s.blurb)}</p>
+    const shared = s.papers.length ? s.top.filter((i) => s.np[i] >= 2).sort((a, b) => s.np[b] - s.np[a] || s.deg[b] - s.deg[a]) : [];
+    return `${navHTML()}<div class="eyebrow">Demonstration · read-only</div><h1>${esc(s.title)}</h1><p>${esc(s.blurb)}</p>
       ${rows(s.stats.map(([k, v]) => [esc(k), typeof v === 'number' ? v.toLocaleString('en') : esc(v)]))}
-      <h2>Most connected</h2><div class="chips">${s.top.slice(0, 18).map(chip).join('')}</div>
-      ${papers.length ? `<h2>Sources</h2>${papers.slice(0, 10).map((i) => `<div class="step"><b>${esc(s.papers[i])}</b><div class="muted">${plural(perPaper[i], s.unit)}</div></div>`).join('')}
-        ${papers.length > 10 ? `<p class="muted note">and ${papers.length - 10} more.</p>` : ''}` : ''}
-      <p class="muted note">Click a node or a hub to inspect it, or search by name. Drag to ${G.dim === 3 ? 'turn' : 'pan'}; scroll to zoom. This graph is shown for demonstration, in 2D and 3D only: the region drawing, editing, the timeline and review belong to the robot's memory. Source: ${esc(s.source)}.</p>`;
+      ${papers.length ? `<h2>Papers</h2>${papers.slice(0, G.all ? Infinity : 12).map((i) => `<button class="paperrow" data-act="set-paper" data-id="${i}"><b>${esc(s.papers[i])}</b><span class="muted">${plural(perPaper[i], s.unit)}</span></button>`).join('')}${more(papers.length, 12)}` : ''}
+      ${shared.length ? `<h2>Ideas in common · ${shared.length.toLocaleString('en')} nodes in two or more papers</h2><div class="chips">${shared.slice(0, 24).map((i) => chip(i, s.np[i])).join('')}</div>` : ''}
+      <h2>Most connected</h2><div class="chips">${s.top.slice(0, 18).map((i) => chip(i, s.deg[i])).join('')}</div>
+      <h2>How to explore</h2>
+      <p class="muted note">Click a node or a hub to open its note; double-click a node to draw only its neighbourhood. In a note, every name is a link, ← and → walk back through what you opened, and “Path from here” finds the shortest chain of ${esc(s.unit)}s to another node. Drag to ${G.dim === 3 ? 'turn' : 'pan'}; scroll to zoom. This graph is shown for demonstration, in 2D and 3D only: the region drawing, editing, the timeline and review belong to the robot's memory. Source: ${esc(s.source)}.</p>`;
   }
   function searchHTML(q) {
     const s = G.set; if (!s) return '<p>The graph is still loading.</p>';
     const ns = [], es = [];
     for (const i of s.top) { if (s.nodes[i].l.toLowerCase().includes(q)) { ns.push(i); if (ns.length === 7) break; } }
     for (let j = 0; j < s.edges.length && es.length < 8; j++) if (s.edges[j].t.toLowerCase().includes(q)) es.push(j);
+    const ps = []; for (let i = 0; i < s.papers.length && ps.length < 4; i++) if (s.papers[i].toLowerCase().includes(q)) ps.push(i);
     return ns.map((i) => `<button data-act="set-node" data-id="${i}">${esc(s.nodes[i].l)} <em>${esc(s.kinds[s.nodes[i].k])} · ${s.deg[i]}</em></button>`).join('') +
+      ps.map((i) => `<button data-act="set-paper" data-id="${i}">${esc(s.papers[i])} <em>paper</em></button>`).join('') +
       es.map((j) => `<button data-act="set-edge" data-id="${j}"><b style="color:${colorOf(s.edges[j].g)}">${j + 1}</b> ${esc(s.edges[j].t)}</button>`).join('') || '<p>Nothing matches in this graph.</p>';
   }
 
   window.HI.gallery = { LIST, state: G, open, close, draw, act: ACT, memorySelect, viewsHTML, optionsHTML, legendHTML, panelHTML, searchHTML,
-    setHops(h) { G.hops = h; onChange(); }, resize() { view?.resize(); }, onChange(f) { onChange = f; },
+    setHops(h) { G.hops = h; onChange(); }, want(sel, focus) { G.wanted = sel || focus ? { sel, focus } : null; },
+    hash: () => ({ sel: code(G.sel), focus: code(G.focus) }), resize() { view?.resize(); }, onChange(f) { onChange = f; },
     footHTML: () => (G.set ? `<p class="setnote"><b>${esc(G.set.title)}</b><span> · a snapshot shown for demonstration, read-only. It has no memory states to replay.</span> <button data-act="memory" data-id="">Back to robot R1</button></p>` : '') };
 })();

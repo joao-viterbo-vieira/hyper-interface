@@ -64,6 +64,13 @@ linked to its members. The region drawing, editing, the timeline and review stay
 | Ontotipo | statements from 16 papers on knowledge hypergraphs, content layer (L2), same-as mentions merged (ontotipohypergraph, exp04) | 4,271 hyperedges · 7,430 nodes |
 | HarnessKG · S2D | the task memory evolved for Symptom2Disease; frozen winner of seed 42, the best of seeds 42/43/44 on the test set (88.7 / 87.7 / 85.8 %) | 273 hyperedges · 395 nodes |
 
+They are explored the way the Ontotipo interface is: a click on a node, a hub or a paper opens its note, where every
+name is a link and `←` `→` walk back through what was opened; a double click on a node (or *View in the hypergraph*)
+draws only its neighbourhood, one or two hops wide; a paper can be drawn on its own; and *Path from here* finds the
+shortest chain of hyperedges between two nodes. The overview lists the papers and the ideas that two or more papers
+share. The URL keeps the place: `#set=zotero&sel=n84&part=n84` (`sel` is the open note, `part` what is drawn; `n` node,
+`e` hyperedge, `p` paper).
+
 Click a node or a hub to read the claim, its roles, source and quote; search by name; "Show only its
 neighbourhood" isolates one node. A link such as `index.html#set=zotero&view=2d` opens a graph directly.
 
@@ -80,7 +87,7 @@ js/data.js      the example memory and the data contract
 js/store.js     append-only memory store: states, review actions, backends
 js/canvas.js    the hypergraph drawing (rubber-band hulls, arrows, captions, pan and zoom)
 js/view3d.js    the robot's memory in 3D
-js/gallery.js   the demonstration graphs: loading, 2D/3D drawing, panel, search
+js/gallery.js   the demonstration graphs: loading, 2D/3D drawing, notes, neighbourhoods, paths, search
 js/app.js       side panel, timeline, forms
 data/           zotero.js, ontotipo.js, s2d.js: the demonstration graphs
 vendor/         3d-force-graph (the only dependency, vendored)
