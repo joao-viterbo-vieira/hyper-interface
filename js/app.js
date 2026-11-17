@@ -238,6 +238,7 @@
       return `<div class="eyebrow">About</div><h1>Hyper Interface</h1>
         <p><b>Human-Supervised Knowledge Hypergraph Memory for Autonomous Robots</b></p>
         <p class="muted">João Viterbo Vieira · José Pedro Carvalho · A. Pedro Aguiar<br>Faculty of Engineering, University of Porto · SYSTEC-ARISE<br>ROBOT2026 · 9th Iberian Robotics Conference</p>
+        <p><a href="https://github.com/joao-viterbo-vieira/hyper-interface" target="_blank" rel="noopener">Code on GitHub ↗</a></p>
         <p>A robot's persistent memory is a knowledge hypergraph. A hyperedge keeps a whole fact and its context as one unit: who did what to which object, where, since when, and who said so. Hyper Interface lets an operator see that memory, correct it, and trace how it changed.</p>
         <h2>Four capabilities</h2>
         ${[['graph', 'Higher-order visualization', 'Explore entities and hyperedges; filter by context.'], ['pencil', 'Interactive knowledge management', 'Create, edit, validate and remove.'],
