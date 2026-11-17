@@ -6,14 +6,15 @@
   const { ICONS, POSTER_BOX } = window.HI_DATA;
   const { esc, styleOf, famColor } = canvas;
   const $ = (s) => document.querySelector(s);
-  const MODES = [['graph', 'graph', 'Explore the hypergraph'], ['edit', 'pencil', 'Create and edit knowledge'],
-                 ['history', 'clock', 'Memory states over time'], ['review', 'branch', 'Review proposals and provenance'], ['about', 'info', 'About']];
+  const MODES = [['graph', 'graph', 'Explore the hypergraph', 'Explore'], ['edit', 'pencil', 'Create and edit knowledge', 'Edit'],
+                 ['history', 'clock', 'Memory states over time', 'History'], ['review', 'branch', 'Review proposals and provenance', 'Review'], ['about', 'info', 'About', 'About']];
   const VIEWS = [['hull', 'Hypergraph', 'Each fact is a region around its members; arrows read as its sentence'],
                  ['bipartite', 'Bipartite', 'Each fact is a node linked to its members, by role'],
                  ['pairwise', 'Pairwise', 'What an ordinary graph keeps: one link per pair'], ['3d', '3D', 'The memory in 3D']];
   const SCENES = [['all', 'Whole memory'], ['poster', 'Poster example'], ['cup', 'Where is the cup?'], ['r2', 'Robot R2']];
   const S = { at: 'now', mode: 'graph', view: 'hull', scene: 'all', focus: null, hops: 1, hidden: new Set(), showDeprecated: true, robotView: false,
-              sel: { type: 'edge', id: 'e2' }, form: null, playing: null };
+              sel: { type: 'edge', id: 'e2' }, form: null, playing: null,
+              sheet: false };   // phone: is the bottom sheet (the side panel) pulled up?
   let cv = null, v3 = null, v3key = null;
   const inSet = () => !!gallery.state.id;          // a demonstration graph is open instead of the robot's memory
 
@@ -54,7 +55,7 @@
 
   // ───────────────────────────── drawing ─────────────────────────────
   const hooks = {
-    onNode: (id) => select({ type: 'node', id }), onEdge: (id) => select({ type: 'edge', id }), onBackground: () => select(null), onFocus: (id) => focus(id),
+    onNode: (id) => select({ type: 'node', id }), onEdge: (id) => select({ type: 'edge', id }), onBackground: () => { S.sheet = false; select(null); }, onFocus: (id) => focus(id),
     onMove: (id, x, y) => store.actions.move(id, x, y), onMoveCaption: (id, key, x, y) => store.actions.moveCaption(id, key, x, y),
   };
   // a demonstration graph: read-only, 2D or 3D only, drawn by gallery.js
@@ -107,6 +108,7 @@
       ${S.view === '3d' ? '<button data-act="rotate" class="link" title="Start or stop the slow turn">rotate / pause</button>' : ''}`;
     $('#note').hidden = S.view !== 'pairwise';
     $('#note').innerHTML = `<b>${pairs} pairwise links</b> stand in for ${es.length} fact${es.length === 1 ? '' : 's'}. Arrows, words and colours survive; which fact a link belongs to and its roles do not. Hover a link to see its fact.`;
+    $('#opt-toggle').classList.toggle('on', !!filtered() || !S.showDeprecated);
     $('#count').textContent = `${es.length} fact${es.length === 1 ? '' : 's'} · ${ns.length} entities`;
   }
   function renderLegend(es) {
@@ -248,11 +250,18 @@
     },
   };
   function renderPanel() {
-    document.querySelectorAll('#rail button').forEach((b) => b.classList.toggle('active', b.dataset.id === S.mode));
-    $('#panel').innerHTML = !inSet() || S.mode === 'about' ? PANELS[S.mode]() : S.mode === 'graph' ? gallery.panelHTML()
+    const todo = inSet() ? 0 : pending().length;
+    document.querySelectorAll('#rail button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.id === S.mode);
+      if (b.dataset.id === 'review') { if (todo) b.dataset.badge = todo; else delete b.dataset.badge; }
+    });
+    // on a phone the panel is a bottom sheet: collapsed it shows only its title, the grab bar pulls it up
+    document.body.classList.toggle('sheet-open', S.sheet);
+    const body = !inSet() || S.mode === 'about' ? PANELS[S.mode]() : S.mode === 'graph' ? gallery.panelHTML()
       : `<div class="eyebrow">Read-only demonstration</div><h1>Not available for this graph</h1>
          <p class="muted">Editing, memory states and review work on the robot's memory. A demonstration graph can only be explored, in 2D and 3D.</p>
          <div class="review"><button data-act="mode" data-id="graph">Explore the graph</button><button data-act="memory" data-id="">Back to robot R1</button></div>`;
+    $('#panel').innerHTML = `<button class="grab" data-act="sheet" aria-expanded="${S.sheet}" aria-label="${S.sheet ? 'Collapse' : 'Expand'} the panel"></button>` + body;
   }
   function refresh() { renderCanvas(); renderPanel(); }
   const refit = () => { refresh(); fit(); };
@@ -267,7 +276,7 @@
     if (q.get('focus') && store.entity(q.get('focus'))) S.focus = q.get('focus');
     if (q.has('at')) { const a = +q.get('at'); if (a >= 0 && a < store.head()) S.at = a; }
     if (q.has('edge')) S.sel = q.get('edge') ? { type: 'edge', id: q.get('edge') } : null;
-    if (MODES.some((m) => m[0] === q.get('mode'))) S.mode = q.get('mode');
+    if (MODES.some((m) => m[0] === q.get('mode'))) { S.mode = q.get('mode'); S.sheet = S.mode !== 'graph'; }
   }
   function writeHash() {
     const q = new URLSearchParams();
@@ -286,7 +295,7 @@
 
   // ───────────────────────────── actions ─────────────────────────────
   function setMemory(id) {
-    stopPlay(); S.form = null; $('#search').value = ''; $('#results').hidden = true;
+    stopPlay(); S.form = null; S.sheet = false; $('#search').value = ''; $('#results').hidden = true;
     if (id) { if (S.mode !== 'about') S.mode = 'graph'; gallery.open(id); }
     else { gallery.close(); refit(); }
   }
@@ -302,7 +311,7 @@
     if (sel?.type === 'edge' && !edges().some((e) => e.id === sel.id)) { const e = allEdges().find((x) => x.id === sel.id); if (e) { applyScene('all'); S.robotView = false; S.showDeprecated = true; return refit(); } }
     refresh();
   }
-  function focus(id) { S.focus = id; S.scene = S.scene === 'poster' ? 'poster' : 'all'; S.sel = { type: 'node', id }; S.form = null; if (S.view === '3d') S.view = 'hull'; refit(); }
+  function focus(id) { S.sheet = false; S.focus = id; S.scene = S.scene === 'poster' ? 'poster' : 'all'; S.sel = { type: 'node', id }; S.form = null; if (S.view === '3d') S.view = 'hull'; refit(); }
   function goto(id) { S.at = id === 'now' || +id >= store.head() ? 'now' : Math.max(0, +id); S.form = null; refresh(); }
   function stopPlay() { clearInterval(S.playing); S.playing = null; }
   function readForm() {
@@ -311,7 +320,9 @@
     return { ...S.form, sentence: $('#f-sentence').value.trim(), family: $('#f-family').value, members, flow };
   }
   const ACT = {
-    mode: (id) => { S.mode = id; S.form = null; renderPanel(); writeHash(); },
+    mode: (id) => { S.sheet = id === S.mode ? !S.sheet : true; S.mode = id; S.form = null; renderPanel(); $('#panel').scrollTop = 0; writeHash(); },
+    sheet: () => { S.sheet = !S.sheet; renderPanel(); $('#panel').scrollTop = 0; },
+    options: () => { const open = $('#bar').classList.toggle('open'); $('#opt-toggle').setAttribute('aria-expanded', open); },
     memory: (id) => setMemory(id),
     view: (id) => { S.view = id; refit(); },
     'select-edge': (id) => select({ type: 'edge', id }),
@@ -354,7 +365,7 @@
         : f.flow.some((a) => !set.has(a.from) || !set.has(a.to) || a.from === a.to) ? 'Each arrow must link two different participants of this fact.' : f.flow.some((a) => !a.word) ? 'Give every arrow its linking word.' : '';
       if (err) { $('#f-error').textContent = err; return; }
       const patch = { sentence: f.sentence, family: f.family, members: f.members, flow: f.flow };
-      S.form = null; S.mode = 'graph';
+      S.form = null; S.mode = 'graph'; S.sheet = false;
       if (f.id) { S.sel = { type: 'edge', id: f.id }; store.actions.edit(f.id, patch); }
       else { applyScene('all'); S.sel = { type: 'edge', id: store.actions.addEdge(patch) }; refit(); }
     },
@@ -401,7 +412,7 @@
     try { const t = localStorage.getItem('hyper-interface/theme'); if (t === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) { /* ignore */ }
     await store.init();
     readHash();
-    $('#rail').innerHTML = MODES.map(([id, ic, title]) => `<button data-act="mode" data-id="${id}" title="${title}" aria-label="${title}">${svgIcon(ic, 19)}</button>`).join('');
+    $('#rail').innerHTML = MODES.map(([id, ic, title, name]) => `<button data-act="mode" data-id="${id}" title="${title}" aria-label="${title}">${svgIcon(ic, 19)}<span>${name}</span></button>`).join('');
     cv = canvas.create($('#canvas'), hooks);
     store.subscribe(() => { S.at = 'now'; refresh(); });
     gallery.onChange(refresh);

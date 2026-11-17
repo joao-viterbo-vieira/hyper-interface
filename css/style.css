@@ -76,6 +76,8 @@ sub { font-size: .72em; vertical-align: baseline; position: relative; top: .28em
 
 #bar { position: absolute; left: 10px; top: 10px; right: 54px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; pointer-events: none; }
 #bar > * { pointer-events: auto; }
+#bar .row { display: contents; }
+.grab, #opt-toggle, #rail button span { display: none; }   /* phone only */
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
 .seg button { border: none; background: transparent; padding: 5px 11px; color: var(--muted); font-size: 13px; }
 .seg button + button { border-left: 1px solid var(--line); }
@@ -192,6 +194,99 @@ a { color: var(--blue); cursor: pointer; font-weight: 600; text-decoration: none
   #legend, #count { display: none; }
   #zoom { right: 6px; top: 6px; }
   .review button { padding: 10px 12px; }
+}
+/* ───────────── phones: the drawing fills the screen · views in the top corner · actions in a bottom menu ─────────────
+   The side panel becomes a bottom sheet over the drawing. Collapsed it is one line (what is selected); a tab or the
+   grab bar pulls it up. The drawing keeps its size either way, so nothing jumps. */
+@media (max-width: 700px) and (orientation: portrait), (max-width: 479px) {
+  #window { grid-template-rows: 40px minmax(0, 1fr) 44px 50px auto; grid-template-areas: "bar" "stage" "time" "panel" "rail"; }
+  #stage { border-bottom: none; }
+  #search, .field input[type="text"], .field select, .mrow input, .mrow select, #options select { font-size: 16px; }   /* below 16px iOS zooms the page on focus */
+  #search-wrap { flex: 1 1 120px; } #titlebar h1 { flex: 0 1 auto; }
+
+  /* views: top-left corner, with the scene and filters behind one button */
+  #bar { left: 6px; top: 6px; right: 6px; flex-direction: column; align-items: flex-start; gap: 6px; flex-wrap: nowrap; }
+  #bar .row { display: flex; gap: 6px; max-width: 100%; }
+  #views { min-width: 0; } .seg button { padding: 7px 9px; }
+  #opt-toggle { display: grid; place-items: center; position: relative; flex: none; width: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--muted); padding: 0; }
+  #opt-toggle[aria-expanded="true"] { background: var(--blue); border-color: var(--blue); color: var(--blue-ink); }
+  #opt-toggle.on::after { content: ""; position: absolute; right: -3px; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--orange); border: 2px solid var(--stage); }
+  #options { display: none; }
+  #bar.open #options { display: flex; flex-direction: column; align-items: flex-start; gap: 11px; padding: 10px 12px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+  #options input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+  #zoom { top: auto; bottom: 8px; right: 6px; } #zoom button { width: 36px; height: 34px; }
+  #readonly { top: 46px; width: max-content; }
+  #note { left: 6px; right: 50px; bottom: 8px; transform: none; max-width: none; font-size: 12px; }
+
+  #timeline { padding: 6px 26px 0 10px; border-top: 1px solid var(--line); }
+  #timeline .track { height: 38px; } #timeline .play { width: 28px; height: 28px; margin-top: 1px; }
+  .tick span { top: 24px; font-size: 10.5px; }
+
+  .setnote { margin: 4px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; white-space: nowrap; } .setnote span { display: none; }
+  .setnote b { overflow: hidden; text-overflow: ellipsis; } .setnote button { flex: none; padding: 5px 10px; }
+  #options select#memory { max-width: 100%; }
+
+  /* bottom sheet */
+  #panel { position: relative; z-index: 20; align-self: end; height: 50px; overflow: hidden; padding: 6px 46px 0 14px; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0;
+    transition: height .22s ease; overscroll-behavior: contain; }
+  #panel > .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body:not(.sheet-open) #panel > h1 { font-size: 15px; margin: 1px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body:not(.sheet-open) #panel > h1 svg { width: 15px; height: 15px; vertical-align: -2px; }
+  body:not(.sheet-open) #panel > :not(.grab):not(.eyebrow):not(h1) { display: none; }
+  .grab { display: block; border: none; background: none; padding: 0; }
+  body:not(.sheet-open) .grab { position: absolute; inset: 0; width: 100%; z-index: 1; }
+  body:not(.sheet-open) .grab::after { content: ""; position: absolute; right: 18px; top: 19px; width: 9px; height: 9px; border: solid var(--muted); border-width: 2px 0 0 2px; transform: rotate(45deg); }
+  .sheet-open #panel { height: 64vh; height: 64dvh; overflow-y: auto; padding: 0 14px 26px; box-shadow: 0 -10px 30px rgba(0,0,0,.35); }
+  .sheet-open .grab { position: sticky; top: 0; z-index: 2; width: calc(100% + 28px); margin: 0 -14px 2px; height: 30px; background: var(--panel); border-radius: 14px 14px 0 0; }
+  .sheet-open .grab::after { content: ""; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto; }
+  .kv { grid-template-columns: 84px 1fr; }
+  .chip { padding: 5px 12px 5px 9px; } .mrow button { padding: 4px 12px; }
+
+  /* bottom menu */
+  #rail { justify-content: space-around; gap: 0; border-bottom: none; background: var(--bar); position: relative; z-index: 21; padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); }
+  #rail button { position: relative; flex: 1 1 0; width: auto; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 9px; color: var(--bar-sub); }
+  #rail button span { display: block; font-size: 10.5px; font-weight: 600; }
+  #rail button:hover { background: none; }
+  #rail button.active { background: rgba(255,255,255,.1); color: var(--bar-text); }
+  #rail button[data-badge]::after { content: attr(data-badge); position: absolute; left: calc(50% + 5px); top: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+    background: var(--orange); color: #1a1200; font: 700 10.5px/16px var(--mono); }
+}
+/* ───────────── a phone held sideways: too short to stack, so the panel goes back beside the drawing ───────────── */
+@media (min-width: 480px) and (max-width: 950px) and (orientation: landscape) and (max-height: 500px) {
+  #window { inset: 0; border-radius: 0; border-width: 0; grid-template-columns: calc(44px + env(safe-area-inset-left)) minmax(0, 1fr) calc(clamp(236px, 38%, 300px) + env(safe-area-inset-right));
+    grid-template-rows: 36px minmax(0, 1fr) 46px; grid-template-areas: "bar bar bar" "rail stage panel" "rail time panel"; }
+  #titlebar { gap: 8px; padding: 0 calc(8px + env(safe-area-inset-right)) 0 calc(10px + env(safe-area-inset-left)); }
+  #titlebar h1 span, .dots { display: none; }
+  #search, .field input[type="text"], .field select, .mrow input, .mrow select { font-size: 16px; }
+  #rail { flex-direction: column; justify-content: flex-start; gap: 4px; padding: 6px 0 0 env(safe-area-inset-left); border: none; }
+  #rail button { width: 36px; height: 34px; }
+  #rail button:last-child { margin: auto 0 6px; }
+  #panel { border-left: 1px solid var(--line); padding: 10px calc(12px + env(safe-area-inset-right)) 20px 12px; }
+  #panel h1 { font-size: 16.5px; }
+  #bar { left: 6px; top: 6px; right: 44px; gap: 5px; }
+  .seg button { padding: 5px 8px; font-size: 12.5px; }
+  /* scene and filters behind one button, as on a phone held upright */
+  #bar { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; }
+  #bar .row { display: flex; gap: 6px; max-width: 100%; } #views { min-width: 0; overflow-x: auto; scrollbar-width: none; } #views button { flex: none; }
+  @media (max-width: 620px) { .seg button { padding: 5px 6px; font-size: 12px; } }
+  #opt-toggle { display: grid; place-items: center; position: relative; flex: none; width: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--muted); padding: 0; }
+  #opt-toggle[aria-expanded="true"] { background: var(--blue); border-color: var(--blue); color: var(--blue-ink); }
+  #opt-toggle.on::after { content: ""; position: absolute; right: -3px; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--orange); border: 2px solid var(--stage); }
+  #options { display: none; }
+  #bar.open #options { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+  #options select { font-size: 16px; max-width: 100%; }
+  #panel { overflow-x: hidden; } #panel .prov { font-size: 11.5px; table-layout: fixed; } .prov th:first-child { width: 26px; } .prov td, .prov th { padding-left: 2px; padding-right: 2px; overflow-wrap: anywhere; } .prov td:first-child { font-size: 11.5px; } .kv { grid-template-columns: 72px minmax(0, 1fr); }
+  #legend, #count { display: none; }
+  #zoom { right: 6px; top: 6px; }
+  #timeline { padding: 6px 26px 0 10px; gap: 12px; }
+  #timeline .track { height: 38px; } #timeline .play { width: 28px; height: 28px; margin-top: 1px; }
+  .tick span { top: 24px; font-size: 10.5px; }
+  .tick u { display: none; } .tick.active u { display: inline; }
+  .tick.active span { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; background: var(--chrome); padding: 0 4px; z-index: 2; }
+  .tick:first-of-type.active span { transform: translateX(-12%); } .tick.now.active span { transform: translateX(-88%); }
+  .setnote { margin: 4px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; white-space: nowrap; } .setnote span { display: none; }
+  .setnote b { overflow: hidden; text-overflow: ellipsis; } .setnote button { flex: none; padding: 5px 10px; }
+  .review button { padding: 9px 10px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 

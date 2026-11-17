@@ -140,7 +140,7 @@
     // names: the best-connected nodes on screen, plus the members of whatever is selected
     function setLabels() {
       const pick = new Map();
-      for (const n of [...byNode.values()].sort((a, b) => b.deg - a.deg).slice(0, big ? 26 : 34)) pick.set(n.id, n);
+      for (const n of [...byNode.values()].sort((a, b) => b.deg - a.deg).slice(0, el.clientWidth < 500 ? 12 : big ? 26 : 34)) pick.set(n.id, n);
       if (H) { let k = 0; for (const id of H.nodes) { const n = id[0] === 'n' && byNode.get(+id.slice(1)); if (n && !pick.has(id) && k++ < 30) pick.set(id, n); } }
       layer.innerHTML = ''; labelled = [...pick.values()];
       for (const n of labelled) { const e = document.createElement('div'); e.className = 'lbl3d'; e.textContent = short(s.nodes[n.i].l); layer.appendChild(e); n._el = e; }
@@ -276,5 +276,5 @@
 
   window.HI.gallery = { LIST, state: G, open, close, draw, act: ACT, memorySelect, viewsHTML, optionsHTML, legendHTML, panelHTML, searchHTML,
     setHops(h) { G.hops = h; onChange(); }, resize() { view?.resize(); }, onChange(f) { onChange = f; },
-    footHTML: () => (G.set ? `<p class="setnote"><b>${esc(G.set.title)}</b> · a snapshot shown for demonstration, read-only. It has no memory states to replay. <button data-act="memory" data-id="">Back to robot R1</button></p>` : '') };
+    footHTML: () => (G.set ? `<p class="setnote"><b>${esc(G.set.title)}</b><span> · a snapshot shown for demonstration, read-only. It has no memory states to replay.</span> <button data-act="memory" data-id="">Back to robot R1</button></p>` : '') };
 })();

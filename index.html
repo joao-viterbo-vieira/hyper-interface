@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hyper Interface · knowledge hypergraph of robot R1</title>
 <meta name="description" content="Hyper Interface: human-supervised knowledge hypergraph memory for autonomous robots. Interactive demo of the ROBOT2026 poster.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101b3d'/%3E%3Cpath d='M8 9c8-4 17 0 16 8s-9 10-14 6-6-11-2-14z' fill='%231d5bd6' fill-opacity='.35' stroke='%236f9bff' stroke-width='1.8'/%3E%3Ccircle cx='12' cy='13' r='2.6' fill='%23fff'/%3E%3Ccircle cx='20' cy='15' r='2.6' fill='%23fff'/%3E%3Ccircle cx='15' cy='21' r='2.6' fill='%23fff'/%3E%3C/svg%3E">
@@ -28,7 +28,10 @@
     <div id="stage3d" hidden></div>
     <p id="empty" hidden>Nothing to draw with these filters in this memory state.</p>
     <div id="bar">
-      <div id="views" class="seg"></div>
+      <div class="row">
+        <div id="views" class="seg"></div>
+        <button id="opt-toggle" data-act="options" title="Scene and filters" aria-label="Scene and filters" aria-expanded="false"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></button>
+      </div>
       <div id="options"></div>
     </div>
     <div id="readonly" hidden></div>
