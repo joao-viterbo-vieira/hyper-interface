@@ -30,7 +30,7 @@ This memory is an illustrative scenario, not a recording from a real robot.
 
 ## Run it
 
-It is a static page with no build step, no dependencies and no network requests.
+It is a static page with no build step and no network requests; its one library is vendored.
 
 - Open `index.html` in a browser, or
 - serve the folder (`python3 -m http.server`) and open <http://localhost:8000>.
@@ -48,6 +48,25 @@ The four icons on the left are the four capabilities in the paper.
 
 Edits are saved in the browser. "Reset demo" (under the clock) restores the example.
 
+## Demonstration graphs
+
+The `memory` selector (and the About panel) also opens three real knowledge hypergraphs. They are there for
+demonstration only: read-only, and drawn only in **2D** and **3D**, where every hyperedge is a small coloured hub
+linked to its members. The region drawing, editing, the timeline and review stay with the robot's memory.
+
+| | what it is | size |
+|---|---|---|
+| Zotero KG | claims extracted from a research library, each checked against a verbatim quote (HyperKG-Zotero) | 271 papers · 4,191 hyperedges · 2,609 entities |
+| Ontotipo | statements from 16 papers on knowledge hypergraphs, content layer (L2), same-as mentions merged (ontotipohypergraph, exp04) | 4,271 hyperedges · 7,430 nodes |
+| HarnessKG · S2D | the task memory evolved for Symptom2Disease; frozen winner of seed 42, the best of seeds 42/43/44 on the test set (88.7 / 87.7 / 85.8 %) | 273 hyperedges · 395 nodes |
+
+Click a node or a hub to read the claim, its roles, source and quote; search by name; "Show only its
+neighbourhood" isolates one node. A link such as `index.html#set=zotero&view=2d` opens a graph directly.
+
+Each graph is one `data/<id>.js` file with its 2D and 3D positions already computed, loaded only when opened.
+To rebuild them from the source projects: `python3 tools/export_demo_graphs.py OUT`, then
+`node tools/layout_demo_graphs.mjs OUT data` (from a folder where `d3-force-3d` is installed).
+
 ## Layout
 
 ```
@@ -56,8 +75,12 @@ css/style.css
 js/data.js      the example memory and the data contract
 js/store.js     append-only memory store: states, review actions, backends
 js/canvas.js    the hypergraph drawing (rubber-band hulls, arrows, captions, pan and zoom)
+js/view3d.js    the robot's memory in 3D
+js/gallery.js   the demonstration graphs: loading, 2D/3D drawing, panel, search
 js/app.js       side panel, timeline, forms
-tools/ui_check.mjs   drives the interface in headless Chrome and fails on any page error
+data/           zotero.js, ontotipo.js, s2d.js: the demonstration graphs
+vendor/         3d-force-graph (the only dependency, vendored)
+tools/          export_demo_graphs.py, layout_demo_graphs.mjs: how data/ was built
 ```
 
 ## Data model

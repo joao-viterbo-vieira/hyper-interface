@@ -1,7 +1,7 @@
 // Hyper Interface: the window around the drawings. Rail modes follow the paper's four capabilities:
 // graph = visualize · pencil = manage · clock = memory states · branch = review and provenance.
 (function () {
-  const { store, canvas, view3d } = window.HI;
+  const { store, canvas, view3d, gallery } = window.HI;
   const { KINDS, FAMILIES } = store;
   const { ICONS, POSTER_BOX } = window.HI_DATA;
   const { esc, styleOf, famColor } = canvas;
@@ -15,6 +15,7 @@
   const S = { at: 'now', mode: 'graph', view: 'hull', scene: 'all', focus: null, hops: 1, hidden: new Set(), showDeprecated: true, robotView: false,
               sel: { type: 'edge', id: 'e2' }, form: null, playing: null };
   let cv = null, v3 = null, v3key = null;
+  const inSet = () => !!gallery.state.id;          // a demonstration graph is open instead of the robot's memory
 
   const C = () => (S.at === 'now' ? store.head() : S.at);
   const live = () => S.at === 'now';
@@ -56,7 +57,21 @@
     onNode: (id) => select({ type: 'node', id }), onEdge: (id) => select({ type: 'edge', id }), onBackground: () => select(null), onFocus: (id) => focus(id),
     onMove: (id, x, y) => store.actions.move(id, x, y), onMoveCaption: (id, key, x, y) => store.actions.moveCaption(id, key, x, y),
   };
+  // a demonstration graph: read-only, 2D or 3D only, drawn by gallery.js
+  function renderSet() {
+    $('#canvas').toggleAttribute('hidden', true); $('#stage3d').hidden = false;      // an <svg> has no .hidden property
+    for (const id of ['#zoom', '#empty', '#readonly', '#note']) $(id).hidden = true;
+    v3?.stop(); v3 = null; v3key = null;
+    const n = gallery.draw($('#stage3d')), set = gallery.state.set;
+    $('#views').innerHTML = gallery.viewsHTML(); $('#options').innerHTML = gallery.optionsHTML(); $('#legend').innerHTML = gallery.legendHTML();
+    $('#count').textContent = set ? `${n.edges.toLocaleString('en')} hyperedges · ${n.nodes.toLocaleString('en')} nodes` : '';
+    $('#timeline').innerHTML = gallery.footHTML();
+    $('#titlebar h1 span').textContent = '· ' + (set ? set.title + ' · demonstration' : 'loading…');
+    writeHash();
+  }
   function renderCanvas() {
+    if (inSet()) return renderSet();
+    $('#titlebar h1 span').textContent = '· knowledge hypergraph of robot R1';
     const es = edges(), ns = nodes(es), is3d = S.view === '3d';
     $('#canvas').toggleAttribute('hidden', is3d);   // an <svg> has no .hidden property
     $('#stage3d').hidden = !is3d; $('#zoom').hidden = is3d;
@@ -74,7 +89,7 @@
     renderBar(es, ns); renderLegend(es); renderTimeline(); writeHash();
   }
   function fit() {
-    if (S.view === '3d') return;
+    if (S.view === '3d' || inSet()) return;
     const r = $('#canvas').getBoundingClientRect(), es = edges();
     const e = S.sel?.type === 'edge' && es.find((x) => x.id === S.sel.id);
     // a phone in portrait cannot show the whole canvas legibly: open on the selected fact instead
@@ -84,7 +99,7 @@
   function renderBar(es, ns) {
     const pairs = es.reduce((s, e) => s + e.members.length * (e.members.length - 1) / 2, 0);
     $('#views').innerHTML = VIEWS.map(([id, name, title]) => `<button data-act="view" data-id="${id}" title="${title}" class="${id === S.view ? 'active' : ''}">${name}</button>`).join('');
-    $('#options').innerHTML = `<label>scene <select id="scene">${SCENES.map(([id, name]) => `<option value="${id}" ${id === S.scene ? 'selected' : ''}>${name}</option>`).join('')}</select></label>
+    $('#options').innerHTML = `${gallery.memorySelect()}<label>scene <select id="scene">${SCENES.map(([id, name]) => `<option value="${id}" ${id === S.scene ? 'selected' : ''}>${name}</option>`).join('')}</select></label>
       ${S.focus ? `<span class="focus">${svgIcon(store.entity(S.focus)?.icon, 13)} ${esc(label(S.focus))}<button data-act="unfocus" title="Clear the focus" aria-label="Clear the focus">✕</button></span>
         <label>hops <select id="hops">${[1, 2, 3].map((h) => `<option ${h === S.hops ? 'selected' : ''}>${h}</option>`).join('')}</select></label>` : ''}
       <label title="Only validated knowledge: what the robot retrieves for planning"><input type="checkbox" id="robot-view" ${S.robotView ? 'checked' : ''}> robot view</label>
@@ -226,19 +241,27 @@
         ${[['graph', 'Higher-order visualization', 'Explore entities and hyperedges; filter by context.'], ['pencil', 'Interactive knowledge management', 'Create, edit, validate and remove.'],
            ['clock', 'Temporal knowledge exploration', 'Compare memory states; trace what changed.'], ['branch', 'Collaboration and provenance', 'Robots propose updates; operators supervise.']]
           .map(([ic, t, d], i) => `<button class="cap" data-act="mode" data-id="${MODES[i][0]}">${svgIcon(ic, 18)}<span><b>${t}</b><br><span class="muted">${d}</span></span></button>`).join('')}
+        <h2>Demonstration graphs</h2>
+        <p class="muted">Three real knowledge hypergraphs, read-only, drawn in 2D and 3D.</p>
+        <div class="review">${gallery.LIST.map(([id, name]) => `<button data-act="memory" data-id="${id}">${esc(name)}</button>`).join('')}</div>
         <p class="muted note">The memory shown is an illustrative scenario built around the example on the poster, not a recording from a real robot. Your edits stay in this browser.</p>`;
     },
   };
   function renderPanel() {
     document.querySelectorAll('#rail button').forEach((b) => b.classList.toggle('active', b.dataset.id === S.mode));
-    $('#panel').innerHTML = PANELS[S.mode]();
+    $('#panel').innerHTML = !inSet() || S.mode === 'about' ? PANELS[S.mode]() : S.mode === 'graph' ? gallery.panelHTML()
+      : `<div class="eyebrow">Read-only demonstration</div><h1>Not available for this graph</h1>
+         <p class="muted">Editing, memory states and review work on the robot's memory. A demonstration graph can only be explored, in 2D and 3D.</p>
+         <div class="review"><button data-act="mode" data-id="graph">Explore the graph</button><button data-act="memory" data-id="">Back to robot R1</button></div>`;
   }
   function refresh() { renderCanvas(); renderPanel(); }
   const refit = () => { refresh(); fit(); };
 
   // ───────────────────────────── state ↔ URL ─────────────────────────────
+  let wanted = null;                                 // #set=… in the URL: opened once the page is up
   function readHash() {
     const q = new URLSearchParams(location.hash.slice(1));
+    if (q.get('set')) { wanted = q.get('set'); if (q.get('view') === '2d') gallery.state.dim = 2; }
     if (VIEWS.some((v) => v[0] === q.get('view'))) S.view = q.get('view');
     if (q.has('scene')) applyScene(q.get('scene'));
     if (q.get('focus') && store.entity(q.get('focus'))) S.focus = q.get('focus');
@@ -248,6 +271,10 @@
   }
   function writeHash() {
     const q = new URLSearchParams();
+    if (inSet()) {
+      q.set('set', gallery.state.id); if (gallery.state.dim === 2) q.set('view', '2d'); if (S.mode !== 'graph') q.set('mode', S.mode);
+      return history.replaceState(null, '', '#' + q);
+    }
     if (S.view !== 'hull') q.set('view', S.view);
     if (S.scene !== 'all') q.set('scene', S.scene);
     if (S.focus && S.scene === 'all') q.set('focus', S.focus);
@@ -258,6 +285,11 @@
   }
 
   // ───────────────────────────── actions ─────────────────────────────
+  function setMemory(id) {
+    stopPlay(); S.form = null; $('#search').value = ''; $('#results').hidden = true;
+    if (id) { if (S.mode !== 'about') S.mode = 'graph'; gallery.open(id); }
+    else { gallery.close(); refit(); }
+  }
   function applyScene(id) {
     if (!SCENES.some((s) => s[0] === id)) return;
     S.scene = id; S.hidden.clear(); S.hops = 1;
@@ -280,6 +312,7 @@
   }
   const ACT = {
     mode: (id) => { S.mode = id; S.form = null; renderPanel(); writeHash(); },
+    memory: (id) => setMemory(id),
     view: (id) => { S.view = id; refit(); },
     'select-edge': (id) => select({ type: 'edge', id }),
     'select-node': (id) => select({ type: 'node', id }),
@@ -338,12 +371,16 @@
     const t = ev.target.closest('[data-act]');
     if (!t || t.disabled) { if (!ev.target.closest('#search-wrap')) $('#results').hidden = true; return; }
     if (t.tagName === 'A') ev.preventDefault();
-    ACT[t.dataset.act]?.(t.dataset.id, ev);
+    const act = t.dataset.act;
+    if (inSet() && (act === 'set-edge' || act === 'set-node' || act === 'set-focus')) S.mode = 'graph';
+    (ACT[act] || gallery.act[act])?.(t.dataset.id, ev);
     if (t.closest('#results')) { $('#results').hidden = true; $('#search').value = ''; }
   });
   document.addEventListener('change', (ev) => {
     const id = ev.target.id;
-    if (id === 'robot-view' || id === 'robot-view-2') { S.robotView = ev.target.checked; refit(); }
+    if (id === 'memory') setMemory(ev.target.value);
+    else if (id === 'set-hops') gallery.setHops(+ev.target.value);
+    else if (id === 'robot-view' || id === 'robot-view-2') { S.robotView = ev.target.checked; refit(); }
     else if (id === 'show-dep') { S.showDeprecated = ev.target.checked; refresh(); }
     else if (id === 'scene') { applyScene(ev.target.value); S.sel = null; refit(); }
     else if (id === 'hops') { S.hops = +ev.target.value; refit(); }
@@ -352,6 +389,7 @@
   function search(q) {
     const box = $('#results'); q = q.trim().toLowerCase();
     if (!q) { box.hidden = true; return; }
+    if (inSet()) { box.innerHTML = gallery.searchHTML(q); box.hidden = false; return; }
     const ents = store.entitiesAt(C()).filter((n) => n.label.toLowerCase().includes(q)).slice(0, 6);
     const es = allEdges().filter((e) => (e.id + ' ' + e.sentence + ' ' + e.members.map((m) => label(m.node) + ' ' + m.role).join(' ')).toLowerCase().includes(q)).slice(0, 8);
     box.innerHTML = ents.map((n) => `<button data-act="focus" data-id="${n.id}">${svgIcon(n.icon, 14)} ${esc(n.label)} <em>${esc(n.kind)}</em></button>`).join('') +
@@ -366,12 +404,14 @@
     $('#rail').innerHTML = MODES.map(([id, ic, title]) => `<button data-act="mode" data-id="${id}" title="${title}" aria-label="${title}">${svgIcon(ic, 19)}</button>`).join('');
     cv = canvas.create($('#canvas'), hooks);
     store.subscribe(() => { S.at = 'now'; refresh(); });
+    gallery.onChange(refresh);
     $('#search').addEventListener('input', (ev) => search(ev.target.value));
     $('#search').addEventListener('focus', (ev) => search(ev.target.value));
     window.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') $('#results').hidden = true; });
-    let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (S.view === '3d') renderCanvas(); else fit(); }, 150); });
+    let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (inSet()) gallery.resize($('#stage3d')); else if (S.view === '3d') renderCanvas(); else fit(); }, 150); });
     refit();
-    window.HI.app = { state: S, refresh, select, goto };
+    if (wanted) setMemory(wanted);
+    window.HI.app = { state: S, refresh, select, goto, setMemory };
   }
   start();
 })();

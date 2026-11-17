@@ -194,3 +194,8 @@ a { color: var(--blue); cursor: pointer; font-weight: 600; text-decoration: none
   .review button { padding: 10px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* demonstration graphs (js/gallery.js) */
+#options select#memory { max-width: 190px; }
+.setnote { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; } .setnote b { color: var(--text); }
+.setnote button { margin-left: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 6px; padding: 2px 9px; font-size: 12.5px; }
