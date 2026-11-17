@@ -3,14 +3,14 @@
 // `backend` below (see README, "Connecting a real robot").
 (function () {
   const { KINDS, FAMILIES, build, slug } = window.HI_DATA;
-  const KEY = 'hyper-interface/v2';
+  const KEY = 'hyper-interface/v3';
   const listeners = new Set();
   let db = null;
 
   const LocalBackend = {
     name: 'this browser (demo data)',
     async load() {
-      try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); if (d && d.version === 2) return d; } } catch (e) { /* private mode */ }
+      try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); if (d && d.version === 3) return d; } } catch (e) { /* private mode */ }
       return build();
     },
     async save(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* quota or private mode: stay in memory */ } },
@@ -54,7 +54,8 @@
     const other = e.contradicts && rawEdge(e.contradicts) ? e.contradicts : null;
     return { id: e.id, ...cur, members, flow: cur.flow.filter((f) => alive.has(f.from) && alive.has(f.to)),
              status, statusSince, since: history[0].c, until, history, qualifiers: e.qualifiers || {},
-             confidence: e.confidence, provenance: e.provenance, contradicts: other, caption: e.caption || null };
+             confidence: e.confidence, provenance: e.provenance, contradicts: other, core: !!e.core,
+             caption: e.caption || null, caption2: e.caption2 || null };
   }
   const edgesAt = (c) => db.hyperedges.map((e) => edgeAt(e, c)).filter(Boolean);
   // an unresolved contradiction: both sides are still held in memory
@@ -130,7 +131,7 @@
       }); },
     // where a node is drawn is not knowledge: it is saved, but it is not a memory state
     move(id, x, y) { const n = entity(id); n.x = Math.round(x); n.y = Math.round(y); save(); },
-    moveCaption(id, x, y) { const e = rawEdge(id); e.caption = { ...(e.caption || { anchor: 'start' }), x: Math.round(x), y: Math.round(y) }; save(); },
+    moveCaption(id, key, x, y) { const e = rawEdge(id); e[key] = { ...(e[key] || e.caption || { anchor: 'start' }), x: Math.round(x), y: Math.round(y) }; save(); },
   };
 
   window.HI = window.HI || {};
@@ -143,6 +144,6 @@
     subscribe(f) { listeners.add(f); return () => listeners.delete(f); },
     exportJSON: () => JSON.stringify(db, null, 2),
     async importJSON(text) { const d = JSON.parse(text); if (!d || !Array.isArray(d.hyperedges) || !Array.isArray(d.commits) || !Array.isArray(d.entities)) throw new Error('not a Hyper Interface memory file');
-      d.version = 2; db = d; await backend.save(db); listeners.forEach((f) => f()); },
+      d.version = 3; db = d; await backend.save(db); listeners.forEach((f) => f()); },
   };
 })();
