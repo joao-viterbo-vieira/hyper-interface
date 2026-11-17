@@ -5,6 +5,10 @@
 João Viterbo Vieira · José Pedro Carvalho · A. Pedro Aguiar
 Faculty of Engineering, University of Porto · SYSTEC-ARISE
 
+### ▶ [Open the live demo](https://joao-viterbo-vieira.github.io/hyper-interface/)
+
+It runs in the browser, on a phone or a computer. Nothing to install.
+
 ![Hyper Interface](media/demo.png)
 
 A robot's persistent memory is a knowledge hypergraph. A hyperedge keeps a whole fact and its context as one
