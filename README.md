@@ -15,6 +15,14 @@ A robot's persistent memory is a knowledge hypergraph. A hyperedge keeps a whole
 unit: who did what to which object, where, since when, and who said so. Hyper Interface lets an operator see
 that memory, correct it, and trace how it changed.
 
+## The poster
+
+Presented at ROBOT2026, the 9th Iberian Robotics Conference (Barcelona, 18–20 November 2026).
+
+[![ROBOT2026 poster](poster/poster.png)](poster/HyperInterface_ROBOT2026_poster_A0.pdf)
+
+**[Download the poster (PDF, A0)](poster/HyperInterface_ROBOT2026_poster_A0.pdf)**
+
 ## The example
 
 The demo is the interface schematic from the poster, made interactive. Memory holds four facts:
@@ -90,6 +98,7 @@ js/view3d.js    the robot's memory in 3D
 js/gallery.js   the demonstration graphs: loading, 2D/3D drawing, notes, neighbourhoods, paths, search
 js/app.js       side panel, timeline, forms
 data/           zotero.js, ontotipo.js, s2d.js: the demonstration graphs
+poster/         the ROBOT2026 poster: A0 PDF and a preview image
 vendor/         3d-force-graph (the only dependency, vendored)
 tools/          export_demo_graphs.py, layout_demo_graphs.mjs: how data/ was built
 ```
